@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Search-Performance Signals for Content Refresh Opportunity Scoring</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.7;color:#17202a;background:#f7f8fa;margin:0}
+main{max-width:900px;margin:auto;padding:40px 20px}
+section,header{background:#fff;border:1px solid #dfe4e8;border-radius:14px;padding:28px;margin:0 0 18px}
+h1{line-height:1.15} h2{margin-top:0}
+table{width:100%;border-collapse:collapse;margin:18px 0}
+th,td{padding:9px;border-bottom:1px solid #ddd;text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{background:#f1f3f5}
+.callout{background:#eef4ff;border-left:4px solid #2457a6;padding:12px 15px}
+.small{color:#5f6b76;font-size:.92rem}
+a{color:#2457a6}
+</style>
+</head>
+<body><main>
+
+<header>
+<h1>Search-Performance Signals for Content Refresh Opportunity Scoring</h1>
+<p>A decision-support workflow for identifying and ranking content pages that may warrant review or refresh.</p>
+<p><strong>Capstone lane:</strong> Refresh / Content Opportunity Scoring</p>
+</header>
+
+<section><h2>Abstract</h2>
+<p>This study investigates whether search-performance signals can be used to identify and rank content pages that are candidates for review or refresh. The analysis uses the FlyRank pseudonymized full warehouse and defines a future-decline outcome as a future 30-day impression total below 80% of the preceding 30-day total. Pre-outcome performance and content signals are compared with the existing Week-7 refresh-priority heuristic using a client-grouped train/test split. On the held-out test set, the Random Forest achieved 0.7412 precision, 0.8220 recall, 0.7795 F1, and 0.7619 average precision, compared with 0.7092 precision, 0.2010 recall, and 0.3133 F1 for the baseline. The resulting ranked queue is intended as decision support for human review and does not establish that refreshing a page will cause future performance improvement.</p></section>
+
+<section><h2>1. Introduction and Problem Statement</h2>
+<p>Content teams may have more pages available for review than they can manually inspect at one time. This creates a prioritization problem: which pages should be reviewed first, and what measurable signals explain their position in the queue?</p>
+<p><strong>Research question:</strong> Can search-performance signals be used to identify and rank content pages that are strong candidates for review or refresh?</p>
+<p>The decision supported is to prioritize pages for review across possible actions such as refresh, expansion, protection, pruning, or monitoring. The system is designed for human decision support rather than automatic content changes.</p></section>
+
+<section><h2>2. Data</h2>
+<p>This capstone uses the FlyRank pseudonymized full warehouse release rather than the 30,000-row starter CSV. In this run, the daily performance data covered <strong>2025-01-27 through 2026-06-30</strong>, with 520 distinct report dates.</p>
+<ul><li><code>fact_content_daily_performance</code> — daily content-level performance signals.</li><li><code>dim_content</code> — content metadata used to derive content age and update age.</li></ul>
+<p>Pages with fewer than 100 impressions in the preceding 30-day feature window were excluded. Pseudonymized client and content identifiers were used for joins and client-grouped validation only; they were not model features. No client names, domains, URLs, page titles, raw search queries, credentials, or other private client information are included in this public artifact.</p>
+<div class="callout"><strong>Outcome:</strong> a page is labeled as declining when future 30-day impressions are less than 80% of its preceding 30-day impressions. The future period is used only to construct this label.</div>
+</section>
+
+<section><h2>3. Methodology</h2>
+<h3>Prediction setup</h3>
+<p>The task is framed as binary classification and ranking. The feature window precedes the outcome window, so future outcome-period information is not used as a model input.</p>
+<h3>Features</h3>
+<ul><li>Previous 30-day impressions</li><li>Previous 30-day clicks</li><li>Previous 30-day average search position</li><li>Impressions in the preceding 30-day period</li><li>Previous 90-day impressions</li><li>Content age in days</li><li>Days since last update</li><li>Previous 30-day CTR</li></ul>
+<h3>Baseline</h3>
+<ul><li>Content age ≥ 365 days: +40</li><li>Pre-outcome trend &lt; −10%: +25</li><li>Pre-outcome CTR &lt; 2%: +20</li><li>Previous 30-day impressions ≥ 1,000: +15</li><li>Score ≥ 60: baseline review/refresh flag</li></ul>
+<p class="small">The trend component was recreated from the previous 30-day period versus the preceding 30-day period because the full warehouse does not expose the starter CSV's exact <code>trend_pct</code> field.</p>
+<h3>Model and validation</h3>
+<p>A Random Forest classifier with 200 trees, class-balanced training, and random seed 42 was trained. Validation used <code>GroupShuffleSplit</code> with client as the grouping variable. The training set contained 97,494 content items from 40 clients; the held-out test set contained 13,753 content items from 10 clients.</p>
+<h3>Evaluation and leakage checks</h3>
+<p>Classification metrics were accuracy, precision, recall, F1, and average precision. Ranking quality was evaluated using Precision@20, Precision@50, and Precision@100. The future outcome period was excluded from features. Structural missingness in the earlier comparison period was not converted to zero trend; rows with missing trend values were excluded from the first model feature set.</p>
+</section>
+
+<section><h2>4. Results</h2>
+<table><tr><th>Method</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>Average Precision</th></tr>
+<tr><td>Week-7 Baseline</td><td>0.4240</td><td>0.7092</td><td>0.2010</td><td>0.3133</td><td>—</td></tr>
+<tr><td>Random Forest</td><td>0.6961</td><td>0.7412</td><td>0.8220</td><td>0.7795</td><td>0.7619</td></tr></table>
+<p>On this held-out test set, the Random Forest had higher measured recall and F1 than the Week-7 heuristic. Its measured precision was also higher.</p>
+<h3>Ranking quality</h3>
+<table><tr><th>Method</th><th>Precision@20</th><th>Precision@50</th><th>Precision@100</th></tr>
+<tr><td>Week-7 Baseline</td><td>0.70</td><td>0.68</td><td>0.68</td></tr>
+<tr><td>Random Forest</td><td>0.95</td><td>0.78</td><td>0.79</td></tr></table>
+</section>
+
+<section><h2>5. Limitations and Honest Framing</h2>
+<ul>
+<li>The system is decision support and does not establish that refreshing a page will cause performance improvement.</li>
+<li>The target measures an observed future impression decline; such a decline can have causes not represented in the available data.</li>
+<li>The evaluation uses a client-grouped holdout, so the reported metrics describe the held-out clients in this experiment rather than guaranteed performance on future datasets or clients.</li>
+<li>The model uses pseudonymized warehouse signals and excludes client names, URLs, page titles, and raw search queries.</li>
+<li>The analysis does not test the causal effect of an intervention. A controlled refresh experiment would be needed to estimate intervention impact.</li>
+<li>The validation split is client-grouped rather than a fully time-forward evaluation; future work could add repeated temporal holdouts when sufficient history is available.</li>
+</ul></section>
+
+<section><h2>6. Ranked Recommendations</h2>
+<p>The Random Forest probability score ranks the held-out content items from highest to lowest predicted probability of future impression decline. The notebook generates a Top-20 review queue and attaches reason codes from pre-outcome signals.</p>
+<ul><li><strong>STALE</strong> — content age ≥ 365 days.</li><li><strong>LOW_CTR</strong> — previous 30-day CTR &lt; 2%.</li><li><strong>VISIBLE</strong> — previous 30-day impressions ≥ 1,000.</li><li><strong>DECLINING</strong> — pre-outcome decline greater than 10%.</li><li><strong>NO_STRONG_SIGNAL</strong> — none of the defined signals is present.</li></ul>
+<p><strong>Action playbook:</strong> REFRESH when decline and low CTR are both present; REVIEW when a meaningful decline or visible low-CTR opportunity is present; otherwise MONITOR under the defined rules. These are review-prioritization labels, not claims that an action will improve performance.</p></section>
+
+<section><h2>7. Reproducibility</h2>
+<p>The capstone notebook contains the complete workflow: warehouse connection, feature construction, target construction, baseline recreation, client-grouped splitting, Random Forest training, evaluation, ranking metrics, recommendation generation, and paper-ready charts.</p>
+<p>DuckDB is used to query the gated warehouse without downloading the full daily dataset. Credentials are supplied at runtime and are not stored in the notebook. The public repository contains only safe artifacts and no private client data or credentials.</p></section>
+
+<section><h2>8. Acknowledgments &amp; Data Credit</h2>
+<p>Built on the FlyRank ML Internship dataset. <a href="https://flyrank.ai" target="_blank" rel="noopener noreferrer">FlyRank</a></p></section>
+
+<section><h2>9. Conclusion</h2>
+<p>This capstone demonstrates an end-to-end workflow for turning search-performance signals into a ranked content-review queue. The experiment combines an existing heuristic baseline with a Random Forest model, evaluates both on the same client-grouped holdout, and adds ranking metrics aligned with a limited review queue. The workflow is intended to help a human reviewer decide where to investigate first while keeping prediction, prioritization, and causal intervention distinct.</p></section>
+
+<footer class="small">FlyRank AI ML Internship Capstone · Refresh / Content Opportunity Scoring</footer>
+</main></body></html>
